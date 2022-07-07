@@ -3,8 +3,13 @@ use cc;
 fn build_c_impl() {
     let mut build = cc::Build::new();
 
-    #[cfg(target_os = "windows")]
-    build.file("src/win10/IddController.c");
+    if cfg!(feature = "fake_virtual_display") {
+        #[cfg(target_os = "windows")]
+        build.file("src/fake_win10/IddController.c");
+    } else {
+        #[cfg(target_os = "windows")]
+        build.file("src/win10/IddController.c");
+    }
 
     build.flag_if_supported("-Wno-c++0x-extensions");
     build.flag_if_supported("-Wno-return-type-c-linkage");
@@ -26,8 +31,13 @@ fn build_c_impl() {
     #[cfg(target_os = "windows")]
     build.compile("xxx");
 
-    #[cfg(target_os = "windows")]
-    println!("cargo:rerun-if-changed=src/win10/IddController.c");
+    if cfg!(feature = "fake_virtual_display") {
+        #[cfg(target_os = "windows")]
+        println!("cargo:rerun-if-changed=src/fake_win10/IddController.c");
+    } else {
+        #[cfg(target_os = "windows")]
+        println!("cargo:rerun-if-changed=src/win10/IddController.c");
+    }
 }
 
 fn main() {
