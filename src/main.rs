@@ -2,7 +2,7 @@
 // Requires Rust 1.18.
 #![windows_subsystem = "windows"]
 
-use hbb_common::log;
+use hbb_common::{log, confy};
 use librustdesk::*;
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -171,20 +171,19 @@ fn import_config(path: &str) {
     let path2 = std::path::Path::new(&path2);
     let path = std::path::Path::new(path);
     log::info!("import config from {:?} and {:?}", path, path2);
-    let config: Config = load_path(path.into());
-    if config.is_empty() {
-        log::info!("Empty source config, skipped");
-        return;
-    }
-    if get_modified_time(&path) > get_modified_time(&Config::file()) {
-        if store_path(Config::file(), config).is_err() {
-            log::info!("config written");
+    if let Ok(config) = confy::load_path(path) as Result<Config, _> {
+        if config.is_empty() {
+            log::info!("Empty source config, skipped");
+        } else if get_modified_time(&path) > get_modified_time(&Config::file()) {
+            if store_path(Config::file(), config).is_err() {
+                log::info!("config written");
+            }
         }
     }
-    let config2: Config2 = load_path(path2.into());
-    if get_modified_time(&path2) > get_modified_time(&Config2::file()) {
-        if store_path(Config2::file(), config2).is_err() {
-            log::info!("config2 written");
+    if let Ok(config2) = confy::load_path(path) as Result<Config2, _> {
+        if get_modified_time(&path2) > get_modified_time(&Config2::file()) {
+            if store_path(Config2::file(), config2).is_err() {
+                log::info!("config2 written");
         }
     }
 }

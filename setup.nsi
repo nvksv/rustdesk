@@ -80,7 +80,7 @@ Section "Install"
   Sleep 500 ; Give time for process to be completely killed
   File "target\release\${PRODUCT_NAME}.exe"
   File "target\release\sciter.dll"
-  File "target\release\default_config.toml"
+  File "target\release\default_config2.toml"
 
   SetShellVarContext all
   CreateShortCut "$INSTDIR\Uninstall ${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe" "--uninstall" "msiexec.exe"
@@ -89,8 +89,8 @@ Section "Install"
   CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall ${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe" "--uninstall" "msiexec.exe"
   CreateShortCut "$SMSTARTUP\${PRODUCT_NAME} Tray.lnk" "$INSTDIR\${PRODUCT_NAME}.exe" "--tray"
   
-  nsExec::Exec '\"$INSTDIR\${PRODUCT_NAME}.exe\" --import-config \"$INSTDIR\default_config.toml\"'
-  Delete '$INSTDIR\default_config.toml'
+  nsExec::Exec '"$INSTDIR\${PRODUCT_NAME}.exe" --import-config "$INSTDIR\default_config.toml"'
+  Delete '$INSTDIR\default_config*.toml'
 
   nsExec::Exec 'sc create ${PRODUCT_NAME} start=auto DisplayName="${PRODUCT_NAME} Service" binPath= "\"$INSTDIR\${PRODUCT_NAME}.exe\" --service"'
   nsExec::Exec 'netsh advfirewall firewall add rule name="${PRODUCT_NAME} Service" dir=in action=allow program="$INSTDIR\${PRODUCT_NAME}.exe" enable=yes'

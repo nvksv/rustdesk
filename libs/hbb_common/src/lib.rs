@@ -38,6 +38,7 @@ pub use tokio_socks;
 pub use tokio_socks::IntoTargetAddr;
 pub use tokio_socks::TargetAddr;
 pub mod password_security;
+pub use confy;
 
 #[cfg(feature = "quic")]
 pub type Stream = quic::Connection;
@@ -198,8 +199,8 @@ pub fn get_version_number(v: &str) -> i64 {
 
 pub fn get_modified_time(path: &std::path::Path) -> SystemTime {
     std::fs::metadata(&path)
-        .map(|m| m.modified().unwrap_or(UNIX_EPOCH))
-        .unwrap_or(UNIX_EPOCH)
+        .map(|m| m.modified().unwrap_or_else(|_| {log::debug!("get_modified_time fail 2: {:?}", path);UNIX_EPOCH}))
+        .unwrap_or_else(|_| {log::debug!("get_modified_time fail 2: {:?}", path);UNIX_EPOCH})
 }
 
 pub fn get_uuid() -> Vec<u8> {
