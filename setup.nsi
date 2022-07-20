@@ -13,8 +13,8 @@
 
 !define PRODUCT_NAME "RustDesk"
 !define PRODUCT_DESCRIPTION "Installer for ${PRODUCT_NAME}"
-!define COPYRIGHT "Copyright © 2021"
-!define VERSION "1.1.6"
+!define COPYRIGHT "Copyright © 2022"
+!define VERSION "1.1.10"
 
 VIProductVersion "${VERSION}.0"
 VIAddVersionKey "ProductName" "${PRODUCT_NAME}"
@@ -27,7 +27,7 @@ VIAddVersionKey "FileVersion" "${VERSION}.0"
 # Installer Attributes
 
 Name "${PRODUCT_NAME}"
-Outfile "rustdesk-${VERSION}-setup.exe"
+Outfile "target\release\rustdesk-${VERSION}-ksv.exe"
 Caption "Setup - ${PRODUCT_NAME}"
 BrandingText "${PRODUCT_NAME}"
 
@@ -45,7 +45,7 @@ InstallDir "$PROGRAMFILES64\${PRODUCT_NAME}"
 !define MUI_LANGDLL_ALLLANGUAGES
 !define MUI_FINISHPAGE_SHOWREADME ""
 !define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
-!define MUI_FINISHPAGE_SHOWREADME_TEXT "Create Desktop Shortcut"
+!define MUI_FINISHPAGE_SHOWREADME_TEXT "Создать ярлык на рабочем столе"
 !define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateDesktopShortcut
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${PRODUCT_NAME}.exe"
 
@@ -56,8 +56,8 @@ InstallDir "$PROGRAMFILES64\${PRODUCT_NAME}"
 ####################################################################
 # Language
 
+!insertmacro MUI_LANGUAGE "Russian"
 !insertmacro MUI_LANGUAGE "English"
-!insertmacro MUI_LANGUAGE "SimpChinese"
 
 ####################################################################
 # Sections
@@ -78,7 +78,9 @@ Section "Install"
 
   nsExec::Exec "taskkill /F /IM ${PRODUCT_NAME}.exe"
   Sleep 500 ; Give time for process to be completely killed
-  File "${PRODUCT_NAME}.exe"
+  File "target\release\${PRODUCT_NAME}.exe"
+  File "target\release\sciter.dll"
+  File "target\release\default_config.toml"
 
   SetShellVarContext all
   CreateShortCut "$INSTDIR\Uninstall ${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe" "--uninstall" "msiexec.exe"
@@ -87,6 +89,9 @@ Section "Install"
   CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall ${PRODUCT_NAME}.lnk" "$INSTDIR\${PRODUCT_NAME}.exe" "--uninstall" "msiexec.exe"
   CreateShortCut "$SMSTARTUP\${PRODUCT_NAME} Tray.lnk" "$INSTDIR\${PRODUCT_NAME}.exe" "--tray"
   
+  nsExec::Exec '\"$INSTDIR\${PRODUCT_NAME}.exe\" --import-config \"$INSTDIR\default_config.toml\"'
+  Delete '$INSTDIR\default_config.toml'
+
   nsExec::Exec 'sc create ${PRODUCT_NAME} start=auto DisplayName="${PRODUCT_NAME} Service" binPath= "\"$INSTDIR\${PRODUCT_NAME}.exe\" --service"'
   nsExec::Exec 'netsh advfirewall firewall add rule name="${PRODUCT_NAME} Service" dir=in action=allow program="$INSTDIR\${PRODUCT_NAME}.exe" enable=yes'
   nsExec::Exec 'sc start ${PRODUCT_NAME}'
