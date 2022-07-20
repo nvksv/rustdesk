@@ -54,7 +54,7 @@ fn main() {
             }
         }
         use flexi_logger::*;
-        if let Ok(x) = Logger::try_with_env_or_str("debug") {
+        if let Ok(x) = Logger::try_with_env() {
             _async_logger_holder = x
                 .log_to_file(FileSpec::default().directory(path))
                 .write_mode(WriteMode::Async)
