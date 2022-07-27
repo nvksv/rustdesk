@@ -24,3 +24,5 @@ rustdesk
 appimage/AppDir
 appimage/*.AppImage
 appimage/appimage-build
+src/rc.rs
+Cargo.lock
