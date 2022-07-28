@@ -9,7 +9,6 @@ use anyhow::Result;
 use directories_next::ProjectDirs;
 use rand::Rng;
 use serde_derive::{Deserialize, Serialize};
-use sodiumoxide::crypto::sign;
 use std::{
     collections::HashMap,
     fs,
@@ -89,7 +88,7 @@ pub struct Config {
     #[serde(default)]
     salt: String,
     #[serde(default)]
-    key_pair: (Vec<u8>, Vec<u8>), // sk, pk
+    pub key_pair: crypto::KeyPair, // sk, pk
     #[serde(default)]
     key_confirmed: bool,
     #[serde(default)]
@@ -586,7 +585,7 @@ impl Config {
         config.store();
     }
 
-    pub fn get_key_pair() -> (Vec<u8>, Vec<u8>) {
+    pub fn get_key_pair() -> pair: crypto::KeyPair {
         // lock here to make sure no gen_keypair more than once
         // no use of CONFIG directly here to ensure no recursive calling in Config::load because of password dec which calling this function
         let mut lock = KEY_PAIR.lock().unwrap();
@@ -594,9 +593,8 @@ impl Config {
             return p.clone();
         }
         let mut config = Config::load_::<Config>("");
-        if config.key_pair.0.is_empty() {
-            let (pk, sk) = sign::gen_keypair();
-            let key_pair = (sk.0.to_vec(), pk.0.into());
+        if config.key_pair.sk.is_empty() {
+            let key_pair = crypto::KeyPair::generate();
             config.key_pair = key_pair.clone();
             std::thread::spawn(|| {
                 let mut config = CONFIG.write().unwrap();

@@ -1,8 +1,8 @@
 use crate::{bail, bytes_codec::BytesCodec, ResultType};
 use bytes::{BufMut, Bytes, BytesMut};
+use crypto::EndpointCryptor;
 use futures::{SinkExt, StreamExt};
 use protobuf::Message;
-use sodiumoxide::crypto::secretbox::{self, Key, Nonce};
 use std::{
     io::{self, Error, ErrorKind},
     net::SocketAddr,
@@ -20,24 +20,25 @@ use tokio_util::codec::Framed;
 pub trait TcpStreamTrait: AsyncRead + AsyncWrite + Unpin {}
 pub struct DynTcpStream(Box<dyn TcpStreamTrait + Send + Sync>);
 
-pub struct FramedStream(
-    Framed<DynTcpStream, BytesCodec>,
-    SocketAddr,
-    Option<(Key, u64, u64)>,
-    u64,
-);
+
+pub struct FramedStream {
+    stream: Framed<DynTcpStream, BytesCodec>,
+    local_addr: SocketAddr,
+    cryptor: Option<crypto::EndpointCryptor>,
+    ms_timeout: u64,
+}
 
 impl Deref for FramedStream {
     type Target = Framed<DynTcpStream, BytesCodec>;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.stream
     }
 }
 
 impl DerefMut for FramedStream {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        &mut self.stream
     }
 }
 
@@ -87,12 +88,12 @@ impl FramedStream {
                 .await??;
                 stream.set_nodelay(true).ok();
                 let addr = stream.local_addr()?;
-                return Ok(Self(
-                    Framed::new(DynTcpStream(Box::new(stream)), BytesCodec::new()),
-                    addr,
-                    None,
-                    0,
-                ));
+                return Ok(Self{
+                    stream: Framed::new(DynTcpStream(Box::new(stream)), BytesCodec::new()),
+                    local_addr: addr,
+                    cryptor: None,
+                    ms_timeout: 0,
+                });
             }
         }
         bail!("could not resolve to any address");
@@ -132,41 +133,41 @@ impl FramedStream {
                     .await??
                 };
                 let addr = stream.local_addr()?;
-                return Ok(Self(
-                    Framed::new(DynTcpStream(Box::new(stream)), BytesCodec::new()),
-                    addr,
-                    None,
-                    0,
-                ));
+                return Ok(Self{
+                    stream: Framed::new(DynTcpStream(Box::new(stream)), BytesCodec::new()),
+                    local_addr: addr,
+                    cryptor: None,
+                    ms_timeout: 0,
+                });
             };
         };
         bail!("could not resolve to any address");
     }
 
     pub fn local_addr(&self) -> SocketAddr {
-        self.1
+        self.local_addr
     }
 
     pub fn set_send_timeout(&mut self, ms: u64) {
-        self.3 = ms;
+        self.ms_timeout = ms;
     }
 
     pub fn from(stream: impl TcpStreamTrait + Send + Sync + 'static, addr: SocketAddr) -> Self {
-        Self(
-            Framed::new(DynTcpStream(Box::new(stream)), BytesCodec::new()),
-            addr,
-            None,
-            0,
-        )
+        Self {
+            stream: Framed::new(DynTcpStream(Box::new(stream)), BytesCodec::new()),
+            local_addr: addr,
+            cryptor: None,
+            ms_timeout: 0,
+        }
     }
 
     pub fn set_raw(&mut self) {
-        self.0.codec_mut().set_raw();
-        self.2 = None;
+        self.stream.codec_mut().set_raw();
+        self.cryptor = None;
     }
 
     pub fn is_secured(&self) -> bool {
-        self.2.is_some()
+        self.cryptor.is_some()
     }
 
     #[inline]
@@ -175,45 +176,39 @@ impl FramedStream {
     }
 
     #[inline]
-    pub async fn send_raw(&mut self, msg: Vec<u8>) -> ResultType<()> {
-        let mut msg = msg;
-        if let Some(key) = self.2.as_mut() {
-            key.1 += 1;
-            let nonce = Self::get_nonce(key.1);
-            msg = secretbox::seal(&msg, &nonce, &key.0);
+    pub async fn send_raw(&mut self, mut msg: Vec<u8>) -> ResultType<()> {
+        if let Some(cryptor) = self.cryptor.as_mut() {
+            msg = cryptor.tx_encrypt(&msg[..]);
         }
-        self.send_bytes(bytes::Bytes::from(msg)).await?;
-        Ok(())
+        self.send_bytes(bytes::Bytes::from(msg)).await
     }
 
     #[inline]
     pub async fn send_bytes(&mut self, bytes: Bytes) -> ResultType<()> {
-        if self.3 > 0 {
-            super::timeout(self.3, self.0.send(bytes)).await??;
+        if self.ms_timeout > 0 {
+            super::timeout(self.ms_timeout, self.stream.send(bytes)).await??;
         } else {
-            self.0.send(bytes).await?;
+            self.stream.send(bytes).await?;
         }
         Ok(())
     }
 
     #[inline]
     pub async fn next(&mut self) -> Option<Result<BytesMut, Error>> {
-        let mut res = self.0.next().await;
-        if let Some(key) = self.2.as_mut() {
+        let mut res = self.stream.next().await;
+
+        if let Some(cryptor) = self.cryptor.as_mut() {
             if let Some(Ok(bytes)) = res.as_mut() {
-                key.2 += 1;
-                let nonce = Self::get_nonce(key.2);
-                match secretbox::open(&bytes, &nonce, &key.0) {
-                    Ok(res) => {
+                match cryptor.rx_decrypt(bytes) {
+                    Ok(msg) => {
                         bytes.clear();
-                        bytes.put_slice(&res);
-                    }
-                    Err(()) => {
-                        return Some(Err(Error::new(ErrorKind::Other, "decryption error")));
-                    }
+                        bytes.put_slice(&msg[..]);
+                    },
+                    Err(e) => return Some(Err(e)),
                 }
             }
         }
+
         res
     }
 
@@ -226,14 +221,8 @@ impl FramedStream {
         }
     }
 
-    pub fn set_key(&mut self, key: Key) {
-        self.2 = Some((key, 0, 0));
-    }
-
-    fn get_nonce(seqnum: u64) -> Nonce {
-        let mut nonce = Nonce([0u8; secretbox::NONCEBYTES]);
-        nonce.0[..std::mem::size_of_val(&seqnum)].copy_from_slice(&seqnum.to_le_bytes());
-        nonce
+    pub fn set_key(&mut self, key: crypto::Key) {
+        self.cryptor = Some(EndpointCryptor::from_key(key));
     }
 }
 
