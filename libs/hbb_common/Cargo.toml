@@ -28,7 +28,7 @@ lazy_static = "1.4"
 confy = { git = "https://github.com/open-trade/confy" }
 dirs-next = "2.0"
 filetime = "0.2"
-crypto = { path = "../rustdesk_crypto", package = "rustdesk_crypto" }
+sodiumoxide = "0.2"
 regex = "1.4"
 tokio-socks = { git = "https://github.com/open-trade/tokio-socks" }
 

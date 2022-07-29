@@ -10,7 +10,7 @@ use hbb_common::{
     protobuf::{Enum, Message as _},
     rendezvous_proto::*,
     socket_client,
-    sodiumoxide::crypto::{box_, secretbox, sign},
+    crypto::{BoxKeyPair, gen_signed_id_msg},
     timeout, tokio, ResultType, Stream,
 };
 use service::{GenericService, Service, ServiceTmpl, Subscriber};
@@ -121,26 +121,11 @@ pub async fn create_tcp_connection(
         w.id_count += 1;
         w.id_count
     };
-    let (sk, pk) = Config::get_key_pair();
-    if secure && pk.len() == sign::PUBLICKEYBYTES && sk.len() == sign::SECRETKEYBYTES {
-        let mut sk_ = [0u8; sign::SECRETKEYBYTES];
-        sk_[..].copy_from_slice(&sk);
-        let sk = sign::SecretKey(sk_);
+    if secure {
+        let config_sk = Config::get_key_pair().sk;
         let mut msg_out = Message::new();
-        let (our_pk_b, our_sk_b) = box_::gen_keypair();
-        msg_out.set_signed_id(SignedId {
-            id: sign::sign(
-                &IdPk {
-                    id: Config::get_id(),
-                    pk: Bytes::from(our_pk_b.0.to_vec()),
-                    ..Default::default()
-                }
-                .write_to_bytes()
-                .unwrap_or_default(),
-                &sk,
-            ).into(),
-            ..Default::default()
-        });
+        let ours_ephemeral_pair = BoxKeyPair::generate();
+        msg_out.set_signed_id( gen_signed_id_msg(Config::get_id(), &ours_ephemeral_pair.pk, config_sk));
         timeout(CONNECT_TIMEOUT, stream.send(&msg_out)).await??;
         match timeout(CONNECT_TIMEOUT, stream.next()).await? {
             Some(res) => {

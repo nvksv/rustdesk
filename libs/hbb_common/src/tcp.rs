@@ -1,6 +1,5 @@
-use crate::{bail, bytes_codec::BytesCodec, ResultType};
+use crate::{bail, bytes_codec::BytesCodec, ResultType, crypto::{EndpointCryptor, Key}};
 use bytes::{BufMut, Bytes, BytesMut};
-use crypto::EndpointCryptor;
 use futures::{SinkExt, StreamExt};
 use protobuf::Message;
 use std::{
@@ -24,7 +23,7 @@ pub struct DynTcpStream(Box<dyn TcpStreamTrait + Send + Sync>);
 pub struct FramedStream {
     stream: Framed<DynTcpStream, BytesCodec>,
     local_addr: SocketAddr,
-    cryptor: Option<crypto::EndpointCryptor>,
+    cryptor: Option<EndpointCryptor>,
     ms_timeout: u64,
 }
 
@@ -221,7 +220,7 @@ impl FramedStream {
         }
     }
 
-    pub fn set_key(&mut self, key: crypto::Key) {
+    pub fn set_key(&mut self, key: Key) {
         self.cryptor = Some(EndpointCryptor::from_key(key));
     }
 }

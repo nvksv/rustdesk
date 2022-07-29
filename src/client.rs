@@ -31,7 +31,7 @@ use hbb_common::{
     rand,
     rendezvous_proto::*,
     socket_client,
-    sodiumoxide::crypto::{box_, secretbox, sign},
+    crypto,
     timeout,
     tokio::time::Duration,
     AddrMangle, ResultType, Stream,

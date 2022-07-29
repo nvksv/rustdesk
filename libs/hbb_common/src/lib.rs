@@ -33,7 +33,7 @@ pub use lazy_static;
 pub use mac_address;
 pub use rand;
 pub use regex;
-pub use sodiumoxide;
+pub mod crypto;
 pub use tokio_socks;
 pub use tokio_socks::IntoTargetAddr;
 pub use tokio_socks::TargetAddr;
@@ -207,7 +207,7 @@ pub fn get_uuid() -> Vec<u8> {
     if let Ok(id) = machine_uid::get() {
         return id.into();
     }
-    Config::get_key_pair().1
+    Config::get_key_pair().pk.into()
 }
 
 #[cfg(test)]

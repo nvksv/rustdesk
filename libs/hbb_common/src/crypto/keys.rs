@@ -2,19 +2,20 @@ use serde::{
     Serialize, Serializer, Deserialize, Deserializer,
     de::{self, Visitor},
 };
+use bytes::Bytes;
 use std::{
     fmt,
-    convert::From,
+    convert::{From, TryFrom, TryInto},
 };
 
-use sodiumoxide::crypto::sign;
+use sodiumoxide::{base64, crypto::{sign, secretbox}};
 
 ///////////////////////////////////////////////////////////////////////////////
 
 macro_rules! impl_key(
     ($name:ident, $len:ident, $enclen:ident, $visitor:ident) => {
         #[derive(Debug, Clone, PartialEq)]
-        pub struct $name([u8; $len]);
+        pub struct $name(pub(crate) [u8; $len]);
 
         impl $name {
             pub fn len() -> usize {
@@ -39,7 +40,7 @@ macro_rules! impl_key(
             where
                 S: Serializer,
             {
-                let str = base64::encode_config(self.0, base64::STANDARD_NO_PAD);
+                let str = base64::encode(self.0, base64::Variant::OriginalNoPadding);
                 debug_assert_eq!(str.len(), $enclen);
         
                 serializer.serialize_str(str.as_str())
@@ -68,33 +69,84 @@ macro_rules! impl_key(
                 where
                     E: de::Error, 
             {
+                let err_fn = || E::custom(format!("expect a base64-encoded string of {} chars long", $enclen));
+
                 if v.len() != $enclen {
-                    return Err(E::custom(format!("expect a base64-encoded string of {} chars long", $enclen)));
+                    return Err(err_fn());
                 }
-                let mut result = [0;$len];
-                let len = base64::decode_config_slice(v, base64::STANDARD_NO_PAD, &mut result[..]);
-        
-                if len != Ok($len) {
-                    return Err(E::custom(format!("expect a base64-encoded string of {} chars long", $enclen)));
+
+                let decoded = base64::decode(v, base64::Variant::OriginalNoPadding).map_err(|_| err_fn())?;
+                if decoded.len() != $len {
+                    return Err(err_fn());
                 };
+
+                let result: [u8;$len] = decoded.try_into().map_err(|_| err_fn())?;
                 
                 Ok($name(result))
             }
         }
 
-        impl From<sign::$name> for $name {
-            fn from(key: sign::$name) -> Self {
-                Self(key.0)
+        impl From<[u8;$len]> for $name {
+            fn from(key: [u8;$len]) -> Self {
+                Self(key)
             }
         }
 
-        impl From<$name> for sign::$name {
+        impl From<&[u8;$len]> for $name {
+            fn from(key: &[u8;$len]) -> Self {
+                Self(key.clone())
+            }
+        }
+
+        impl From<$name> for Vec<u8> {
+            fn from(key: $name) -> Self {
+                key.0.into()
+            }
+        }
+
+        impl TryFrom<Vec<u8>> for $name {
+            type Error = Vec<u8>;
+            fn try_from(key: Vec<u8>) -> Result<Self, Self::Error> {
+                Ok(Self(key.try_into()?))
+            }
+        }
+
+        impl From<&$name> for Bytes {
+            fn from(key: &$name) -> Self {
+                Self::from(key.0.to_vec())
+            }
+        }
+
+        impl TryFrom<&Bytes> for $name {
+            type Error = Bytes;
+            fn try_from(key: &Bytes) -> Result<Self, Self::Error> {
+                let mut arr = [0u8; $len];
+                arr[..].copy_from_slice(key);
+                Ok(Self(arr))
+            }
+        }
+
+    };
+);
+
+#[macro_export]
+macro_rules! impl_from (
+    ($name:ident, $stdname:ty) => {
+        impl From<$stdname> for $name {
+            fn from(key: $stdname) -> Self {
+                Self(key.0)
+            }
+        }
+        
+        impl From<$name> for $stdname {
             fn from(key: $name) -> Self {
                 Self(key.0)
             }
         }
     };
 );
+
+pub(crate) use impl_from;
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -112,18 +164,10 @@ impl_key!( SecretKey, SECRET_KEY_LENGTH, SECRET_KEY_BASE64_LENGTH, SecretKeyVisi
 
 ///////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
-pub struct KeyPair {
-    pub pk: PublicKey,
-    pub sk: SecretKey,
-}
+const BOX_KEY_LENGTH: usize = secretbox::KEYBYTES;
+const BOX_KEY_BASE64_LENGTH: usize = 43;
 
-impl KeyPair {
-    pub fn generate() -> Self {
-        let (pk, sk) = sign::gen_keypair();
-        Self { 
-            pk: pk.into(),
-            sk: sk.into(),
-        }
-    }
-}
+impl_key!( SecretKey, BOX_KEY_LENGTH, BOX_KEY_BASE64_LENGTH, BoxKeyVisitor );
+
+///////////////////////////////////////////////////////////////////////////////
+

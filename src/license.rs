@@ -1,4 +1,4 @@
-use hbb_common::{bail, sodiumoxide::crypto::sign, ResultType};
+use hbb_common::{bail, crypto, ResultType};
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, PartialEq, Default, Serialize, Deserialize, Clone)]
@@ -17,12 +17,12 @@ fn get_license_from_string_(s: &str) -> ResultType<License> {
         88, 168, 68, 104, 60, 5, 163, 198, 165, 38, 12, 85, 114, 203, 96, 163, 70, 48, 0, 131, 57,
         12, 46, 129, 83, 17, 84, 193, 119, 197, 130, 103,
     ];
-    let pk = sign::PublicKey(*PK);
+    let pk = crypto::PublicKey::from(PK);
     let data = base64::decode_config(tmp, base64::URL_SAFE_NO_PAD)?;
     if let Ok(lic) = serde_json::from_slice::<License>(&data) {
         return Ok(lic);
     }
-    if let Ok(data) = sign::verify(&data, &pk) {
+    if let Ok(data) = crypto::verify_signature(&data, &pk) {
         Ok(serde_json::from_slice::<License>(&data)?)
     } else {
         bail!("sign:verify failed");

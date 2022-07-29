@@ -1,4 +1,4 @@
-use sodiumoxide::crypto::secretbox;
+use sodiumoxide::{crypto::secretbox, base64};
 use std::convert::TryInto;
 
 fn get_machine_based_key() -> Result<secretbox::Key, ()> {
@@ -29,7 +29,7 @@ fn machine_based_symmetric_crypt(data: &[u8], encrypt: bool) -> Result<Vec<u8>, 
 pub fn machine_based_encrypt(v: &[u8]) -> Result<String, ()> {
     if v.len() > 0 {
         let v = machine_based_symmetric_crypt(v, true)?;
-        Ok(base64::encode_config(v, base64::STANDARD_NO_PAD))
+        Ok(base64::encode(v, base64::Variant::OriginalNoPadding))
     } else {
         Err(())
     }
@@ -37,7 +37,7 @@ pub fn machine_based_encrypt(v: &[u8]) -> Result<String, ()> {
 
 pub fn machine_based_decrypt(v: &[u8]) -> Result<Vec<u8>, ()> {
     if v.len() > 0 {
-        let v = base64::decode_config(v, base64::STANDARD_NO_PAD).map_err(|_| ())?;
+        let v = base64::decode(v, base64::Variant::OriginalNoPadding).map_err(|_| ())?;
         machine_based_symmetric_crypt(&v, false)
     } else {
         Err(())

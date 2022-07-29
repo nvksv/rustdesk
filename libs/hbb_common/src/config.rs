@@ -585,7 +585,7 @@ impl Config {
         config.store();
     }
 
-    pub fn get_key_pair() -> pair: crypto::KeyPair {
+    pub fn get_key_pair() -> crypto::KeyPair {
         // lock here to make sure no gen_keypair more than once
         // no use of CONFIG directly here to ensure no recursive calling in Config::load because of password dec which calling this function
         let mut lock = KEY_PAIR.lock().unwrap();
