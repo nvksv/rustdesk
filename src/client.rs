@@ -1601,12 +1601,13 @@ fn get_pk(pk: &[u8]) -> Option<[u8; 32]> {
 }
 
 #[inline]
-fn get_rs_pk(str_base64: &str) -> Option<sign::PublicKey> {
-    if let Ok(pk) = base64::decode(str_base64) {
-        get_pk(&pk).map(|x| sign::PublicKey(x))
-    } else {
-        None
-    }
+fn get_rs_pk(str_base64: &str) -> Option<crypto::PublicKey> {
+    str_base64.into().ok()
+    // if let Ok(pk) = base64::decode(str_base64) {
+    //     get_pk(&pk).map(|x| sign::PublicKey(x))
+    // } else {
+    //     None
+    // }
 }
 
 fn decode_id_pk(signed: &[u8], key: &sign::PublicKey) -> ResultType<(String, [u8; 32])> {

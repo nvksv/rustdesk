@@ -9,7 +9,7 @@ pub struct EndpointCryptor {
 
 impl EndpointCryptor {
 
-    fn get_zero_nonce(seqnum: u64) -> Nonce {
+    fn get_nonce(seqnum: u64) -> Nonce {
         let mut nonce = Nonce([0u8; secretbox::NONCEBYTES]);
         nonce.0[..std::mem::size_of_val(&seqnum)].copy_from_slice(&seqnum.to_le_bytes());
         nonce
@@ -25,16 +25,16 @@ impl EndpointCryptor {
     
     pub fn tx_encrypt(&mut self, msg: &[u8]) -> Vec<u8> {
         self.tx_count += 1;
-        let nonce = Self::get_zero_nonce(self.tx_count);
+        let nonce = Self::get_nonce(self.tx_count);
 
-        secretbox::seal(&msg, &nonce, &self.key)
+        secretbox::seal(&msg, &nonce, &secretbox::Key(self.key.0))
     }
 
     pub fn rx_decrypt(&mut self, msg: &[u8]) -> Result<Vec<u8>, std::io::Error> {
         self.rx_count += 1;
-        let nonce = Self::get_zero_nonce(self.rx_count);
+        let nonce = Self::get_nonce(self.rx_count);
 
-        secretbox::open(msg, &nonce, &self.key)
+        secretbox::open(msg, &nonce, &secretbox::Key(self.key.0))
         .map_err(|()| std::io::Error::new(std::io::ErrorKind::Other, "decryption error"))
     }
 }

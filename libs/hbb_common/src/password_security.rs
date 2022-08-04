@@ -1,5 +1,4 @@
-use crate::config::Config;
-use sodiumoxide::base64;
+use crate::{config::Config, crypto};
 use std::sync::{Arc, RwLock};
 
 lazy_static::lazy_static! {
@@ -66,7 +65,7 @@ pub fn encrypt_str_or_original(s: &str, version: &str) -> String {
         return s.to_owned();
     }
     if version == "00" {
-        if let Ok(s) = encrypt(s.as_bytes()) {
+        if let Ok(s) = crypto::machine_based_encrypt(s.as_bytes()) {
             return version.to_owned() + &s;
         }
     }
@@ -80,7 +79,7 @@ pub fn decrypt_str_or_original(s: &str, current_version: &str) -> (String, bool,
     if s.len() > VERSION_LEN {
         let version = &s[..VERSION_LEN];
         if version == "00" {
-            if let Ok(v) = decrypt(&s[VERSION_LEN..].as_bytes()) {
+            if let Ok(v) = crypto::machine_based_decrypt(&s[VERSION_LEN..].as_bytes()) {
                 return (
                     String::from_utf8_lossy(&v).to_string(),
                     true,
@@ -99,7 +98,7 @@ pub fn encrypt_vec_or_original(v: &[u8], version: &str) -> Vec<u8> {
         return v.to_owned();
     }
     if version == "00" {
-        if let Ok(s) = encrypt(v) {
+        if let Ok(s) = crypto::machine_based_encrypt(v) {
             let mut version = version.to_owned().into_bytes();
             version.append(&mut s.into_bytes());
             return version;
@@ -115,45 +114,13 @@ pub fn decrypt_vec_or_original(v: &[u8], current_version: &str) -> (Vec<u8>, boo
     if v.len() > VERSION_LEN {
         let version = String::from_utf8_lossy(&v[..VERSION_LEN]);
         if version == "00" {
-            if let Ok(v) = decrypt(&v[VERSION_LEN..]) {
+            if let Ok(v) = crypto::machine_based_decrypt(&v[VERSION_LEN..]) {
                 return (v, true, version != current_version);
             }
         }
     }
 
     (v.to_owned(), false, !v.is_empty())
-}
-
-fn encrypt(v: &[u8]) -> Result<String, ()> {
-    if v.len() > 0 {
-        symmetric_crypt(v, true).map(|v| base64::encode(v, base64::Variant::Original))
-    } else {
-        Err(())
-    }
-}
-
-fn decrypt(v: &[u8]) -> Result<Vec<u8>, ()> {
-    if v.len() > 0 {
-        base64::decode(v, base64::Variant::Original).and_then(|v| symmetric_crypt(&v, false))
-    } else {
-        Err(())
-    }
-}
-
-fn symmetric_crypt(data: &[u8], encrypt: bool) -> Result<Vec<u8>, ()> {
-    use sodiumoxide::crypto::secretbox;
-    use std::convert::TryInto;
-
-    let mut keybuf = crate::get_uuid();
-    keybuf.resize(secretbox::KEYBYTES, 0);
-    let key = secretbox::Key(keybuf.try_into().map_err(|_| ())?);
-    let nonce = secretbox::Nonce([0; secretbox::NONCEBYTES]);
-
-    if encrypt {
-        Ok(secretbox::seal(data, &nonce, &key))
-    } else {
-        secretbox::open(data, &nonce, &key)
-    }
 }
 
 mod test {

@@ -10,7 +10,7 @@ use hbb_common::{
     protobuf::{Enum, Message as _},
     rendezvous_proto::*,
     socket_client,
-    crypto::{BoxKeyPair, gen_signed_id_msg},
+    crypto,
     timeout, tokio, ResultType, Stream,
 };
 use service::{GenericService, Service, ServiceTmpl, Subscriber};
@@ -124,35 +124,20 @@ pub async fn create_tcp_connection(
     if secure {
         let config_sk = Config::get_key_pair().sk;
         let mut msg_out = Message::new();
-        let ours_ephemeral_pair = BoxKeyPair::generate();
-        msg_out.set_signed_id( gen_signed_id_msg(Config::get_id(), &ours_ephemeral_pair.pk, config_sk));
+        let our_ephemeral_pair = BoxKeyPair::generate();
+        msg_out.set_signed_id( crypto::gen_signed_id_msg(Config::get_id(), &our_ephemeral_pair.pk, config_sk));
         timeout(CONNECT_TIMEOUT, stream.send(&msg_out)).await??;
         match timeout(CONNECT_TIMEOUT, stream.next()).await? {
             Some(res) => {
                 let bytes = res?;
                 if let Ok(msg_in) = Message::parse_from_bytes(&bytes) {
                     if let Some(message::Union::PublicKey(pk)) = msg_in.union {
-                        if pk.asymmetric_value.len() == box_::PUBLICKEYBYTES {
-                            let nonce = box_::Nonce([0u8; box_::NONCEBYTES]);
-                            let mut pk_ = [0u8; box_::PUBLICKEYBYTES];
-                            pk_[..].copy_from_slice(&pk.asymmetric_value);
-                            let their_pk_b = box_::PublicKey(pk_);
-                            let symmetric_key =
-                                box_::open(&pk.symmetric_value, &nonce, &their_pk_b, &our_sk_b)
-                                    .map_err(|_| {
-                                        anyhow!("Handshake failed: box decryption failure")
-                                    })?;
-                            if symmetric_key.len() != secretbox::KEYBYTES {
-                                bail!("Handshake failed: invalid secret key length from peer");
-                            }
-                            let mut key = [0u8; secretbox::KEYBYTES];
-                            key[..].copy_from_slice(&symmetric_key);
-                            stream.set_key(secretbox::Key(key));
-                        } else if pk.asymmetric_value.is_empty() {
+                        if pk.asymmetric_value.is_empty() {
                             Config::set_key_confirmed(false);
                             log::info!("Force to update pk");
                         } else {
-                            bail!("Handshake failed: invalid public sign key length from peer");
+                            let key = crypto::handshake_open(&pk.symmetric_value, &pk.asymmetric_value, &our_ephemeral_pair)?;
+                            stream.set_key(key);
                         }
                     } else {
                         log::error!("Handshake failed: invalid message type");

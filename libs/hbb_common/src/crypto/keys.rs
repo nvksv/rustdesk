@@ -27,6 +27,11 @@ macro_rules! impl_key(
             pub fn is_empty(&self) -> bool {
                 *self == Self::default()
             }
+            pub fn from_bytes_with_any_length(bytes: &Bytes) -> Self {
+                let mut arr = [0u8; $len];
+                arr[..].copy_from_slice(bytes);
+                Self(arr)
+            }
         }
 
         impl Default for $name {
@@ -40,9 +45,7 @@ macro_rules! impl_key(
             where
                 S: Serializer,
             {
-                let str = base64::encode(self.0, base64::Variant::OriginalNoPadding);
-                debug_assert_eq!(str.len(), $enclen);
-        
+                let str: String = self.into();
                 serializer.serialize_str(str.as_str())
             }
         }
@@ -69,20 +72,7 @@ macro_rules! impl_key(
                 where
                     E: de::Error, 
             {
-                let err_fn = || E::custom(format!("expect a base64-encoded string of {} chars long", $enclen));
-
-                if v.len() != $enclen {
-                    return Err(err_fn());
-                }
-
-                let decoded = base64::decode(v, base64::Variant::OriginalNoPadding).map_err(|_| err_fn())?;
-                if decoded.len() != $len {
-                    return Err(err_fn());
-                };
-
-                let result: [u8;$len] = decoded.try_into().map_err(|_| err_fn())?;
-                
-                Ok($name(result))
+                v.try_into().map_err(|e| E::custom(e))
             }
         }
 
@@ -118,11 +108,43 @@ macro_rules! impl_key(
         }
 
         impl TryFrom<&Bytes> for $name {
-            type Error = Bytes;
+            type Error = anyhow::Error;
             fn try_from(key: &Bytes) -> Result<Self, Self::Error> {
+                if key.len() != $len {
+                    return Err(anyhow::anyhow!("wrong key length"));
+                }
+
                 let mut arr = [0u8; $len];
                 arr[..].copy_from_slice(key);
                 Ok(Self(arr))
+            }
+        }
+
+        impl From<&$name> for String {
+            fn from(key: &$name) -> Self {
+                let str = base64::encode(&key.0, base64::Variant::OriginalNoPadding);
+                debug_assert_eq!(str.len(), $enclen);
+                str
+            }
+        }
+
+        impl TryFrom<&str> for $name {
+            type Error = anyhow::Error;
+            fn try_from(v: &str) -> Result<Self, Self::Error> {
+                let err_fn = || anyhow::anyhow!(format!("expect a base64-encoded string of {} chars long", $enclen));
+
+                if v.len() != $enclen {
+                    return Err(err_fn());
+                }
+
+                let decoded = base64::decode(v, base64::Variant::OriginalNoPadding).map_err(|_| err_fn())?;
+                if decoded.len() != $len {
+                    return Err(err_fn());
+                };
+
+                let result: [u8;$len] = decoded.try_into().map_err(|_| err_fn())?;
+                
+                Ok($name(result))
             }
         }
 
@@ -146,26 +168,26 @@ macro_rules! impl_from (
     };
 );
 
-pub(crate) use impl_from;
+pub(in crate::crypto) use impl_from;
 
 ///////////////////////////////////////////////////////////////////////////////
 
-const PUBLIC_KEY_LENGTH: usize = sign::PUBLICKEYBYTES;
-const PUBLIC_KEY_BASE64_LENGTH: usize = 43;
+pub(in crate::crypto) const PUBLIC_KEY_LENGTH: usize = sign::PUBLICKEYBYTES;
+pub(in crate::crypto) const PUBLIC_KEY_BASE64_LENGTH: usize = 43;
 
 impl_key!( PublicKey, PUBLIC_KEY_LENGTH, PUBLIC_KEY_BASE64_LENGTH, PublicKeyVisitor );
 
 ///////////////////////////////////////////////////////////////////////////////
 
-const SECRET_KEY_LENGTH: usize = sign::SECRETKEYBYTES;
-const SECRET_KEY_BASE64_LENGTH: usize = 86;
+pub(in crate::crypto)const SECRET_KEY_LENGTH: usize = sign::SECRETKEYBYTES;
+pub(in crate::crypto)const SECRET_KEY_BASE64_LENGTH: usize = 86;
 
 impl_key!( SecretKey, SECRET_KEY_LENGTH, SECRET_KEY_BASE64_LENGTH, SecretKeyVisitor );
 
 ///////////////////////////////////////////////////////////////////////////////
 
-const BOX_KEY_LENGTH: usize = secretbox::KEYBYTES;
-const BOX_KEY_BASE64_LENGTH: usize = 43;
+pub(in crate::crypto)const BOX_KEY_LENGTH: usize = secretbox::KEYBYTES;
+pub(in crate::crypto)const BOX_KEY_BASE64_LENGTH: usize = 43;
 
 impl_key!( Key, BOX_KEY_LENGTH, BOX_KEY_BASE64_LENGTH, KeyVisitor );
 

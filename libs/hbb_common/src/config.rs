@@ -4,6 +4,7 @@ use crate::{
         decrypt_str_or_original, decrypt_vec_or_original, encrypt_str_or_original,
         encrypt_vec_or_original,
     },
+    crypto,
 };
 use anyhow::Result;
 use directories_next::ProjectDirs;
@@ -88,7 +89,7 @@ pub struct Config {
     #[serde(default)]
     salt: String,
     #[serde(default)]
-    pub key_pair: crypto::KeyPair, // sk, pk
+    key_pair: crypto::BoxKeyPair, // sk, pk
     #[serde(default)]
     key_confirmed: bool,
     #[serde(default)]
@@ -585,7 +586,7 @@ impl Config {
         config.store();
     }
 
-    pub fn get_key_pair() -> crypto::KeyPair {
+    pub fn get_key_pair() -> crypto::BoxKeyPair {
         // lock here to make sure no gen_keypair more than once
         // no use of CONFIG directly here to ensure no recursive calling in Config::load because of password dec which calling this function
         let mut lock = KEY_PAIR.lock().unwrap();
@@ -594,7 +595,7 @@ impl Config {
         }
         let mut config = Config::load_::<Config>("");
         if config.key_pair.sk.is_empty() {
-            let key_pair = crypto::KeyPair::generate();
+            let key_pair = crypto::BoxKeyPair::generate();
             config.key_pair = key_pair.clone();
             std::thread::spawn(|| {
                 let mut config = CONFIG.write().unwrap();
