@@ -167,7 +167,7 @@ impl_key!( SecretKey, SECRET_KEY_LENGTH, SECRET_KEY_BASE64_LENGTH, SecretKeyVisi
 const BOX_KEY_LENGTH: usize = secretbox::KEYBYTES;
 const BOX_KEY_BASE64_LENGTH: usize = 43;
 
-impl_key!( SecretKey, BOX_KEY_LENGTH, BOX_KEY_BASE64_LENGTH, BoxKeyVisitor );
+impl_key!( Key, BOX_KEY_LENGTH, BOX_KEY_BASE64_LENGTH, KeyVisitor );
 
 ///////////////////////////////////////////////////////////////////////////////
 
